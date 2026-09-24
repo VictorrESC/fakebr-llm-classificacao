@@ -1,0 +1,22 @@
+# @package _global_
+# Sondas técnicas de compatibilidade, formato, uso e custo da API. Usa textos
+# sintéticos; nenhuma chamada usa os textos ou rótulos do Fake.Br.
+experiment:
+  runner: viabilidade
+  description: Sondas de compatibilidade e custo da API (etapa única)
+  prompt_set: veracidade_v1
+  prompt: A
+  models:
+    - deepseek_v41_flash
+    - qwen38_27b
+    - gemma4_31b
+  top_p: 1.0
+  max_tokens: 16
+  include_logprobs_probe: false  # true adiciona uma chamada por modelo
+
+# Taxa fixa e baixa para as sondas (podem ser alteradas ao retomar).
+api:
+  start_rps: 2.0
+  target_rps: 2.0
+  concurrency: 3
+  max_attempts: 2

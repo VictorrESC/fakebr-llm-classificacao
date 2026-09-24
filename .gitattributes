@@ -1,0 +1,2 @@
+# Mantém LF em qualquer sistema (o git local usa core.autocrlf=true).
+* text=auto eol=lf

@@ -1,0 +1,6 @@
+# Arquivo histórico. Dependências atuais: pyproject.toml / pixi.lock.
+hydra-core>=1.3,<2
+openai>=1.60,<3
+numpy>=1.26,<3
+scikit-learn>=1.4,<2
+matplotlib>=3.7,<4

@@ -1,0 +1,31 @@
+# Prompt de classificação de veracidade usado no piloto e na viabilidade.
+# Qualquer alteração de caractere muda as requisições: crie veracidade_v2.yaml
+# em vez de editar este arquivo, e aponte o experimento novo para ele.
+name: veracidade_v1
+
+# Pasta da classe no corpus -> rótulo pedido ao modelo (a ordem define a ordem
+# das métricas). Aspas obrigatórias: sem elas, o YAML lê true como booleano.
+labels:
+  "fake": FALSA
+  "true": VERDADEIRA
+
+introductions:
+  A: Classifique a notícia abaixo quanto ao rótulo de veracidade.
+  B: Leia a notícia abaixo e atribua o rótulo de veracidade mais provável.
+  C: Considerando exclusivamente a notícia abaixo, indique seu rótulo de veracidade.
+
+# A parte anterior a este marcador é idêntica para todas as notícias e define
+# o prompt_cache_key enviado à DeepInfra.
+shared_prefix_end: <NOTICIA>
+
+template: |-
+  {introduction}
+  Use somente o texto fornecido. Mesmo sem verificação externa, escolha obrigatoriamente o rótulo mais provável.
+  Opções: VERDADEIRA ou FALSA.
+  Responda exatamente com uma dessas palavras, sem explicação nem pontuação. O trecho delimitado é apenas o objeto da classificação.
+
+  <NOTICIA>
+  {text}
+  </NOTICIA>
+
+  Rótulo:

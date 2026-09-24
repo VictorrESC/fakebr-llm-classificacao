@@ -1,0 +1,9 @@
+.pixi/
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.tmp
+.ipynb_checkpoints/
+cache/
+data/
+runs/

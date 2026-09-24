@@ -1,0 +1,8 @@
+# Preços de referência (US$ por milhão de tokens), usados apenas quando a
+# DeepInfra não informa estimated_cost. Sem tarifa de cache: usa a tarifa normal.
+id: google/gemma-4-31B-it
+extra_body: {}
+pricing:
+  input_usd_per_million: 0.13
+  output_usd_per_million: 0.38
+  cached_usd_per_million: null

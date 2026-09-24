@@ -1,0 +1,187 @@
+GUIA DE EXECUÇÃO — EXPERIMENTOS FAKE.BR / DEEPINFRA
+=================================================
+
+Os exemplos usam PowerShell no Windows; em Linux/macOS os comandos "pixi" são
+os mesmos. As tarefas podem ser chamadas de qualquer pasta do projeto: caminhos
+são resolvidos a partir da raiz (a pasta com pyproject.toml).
+
+Não chamam a DeepInfra: test, status, report, costs, cache-import, fetch-data
+e a etapa "prepare". Podem fazer chamadas pagas: as etapas "dev", "eval" e a
+viabilidade, quando houver requisições que ainda não estão no cache.
+
+1. PREPARAR O AMBIENTE
+---------------------
+
+    pixi install
+    pixi run test
+    pixi run fetch-data
+    pixi run status
+
+Se "pixi" não for reconhecido, abra um novo terminal. No Windows o executável
+costuma estar em "$env:USERPROFILE\.pixi\bin\pixi.exe". O pixi.lock fixa as
+versões de todas as dependências para Windows, Linux e macOS.
+
+"fetch-data" baixa o Fake.Br na revisão fixada em conf/config.yaml
+(datasets.fakebr.revision) para data/raw/Fake.br-Corpus/. Se a pasta já existir,
+o comando não faz nada. Um clone git feito à mão também serve: o "prepare"
+confere a impressão digital dos textos e recusa uma versão diferente.
+
+"status" lista os experimentos disponíveis (conf/experiment/) e os runs.
+
+2. TOKEN: SOMENTE PARA CHAMADAS NOVAS
+------------------------------------
+
+Para não digitar o token em um comando que fica no histórico do terminal:
+
+    $segredo = Read-Host "Token DeepInfra" -AsSecureString
+    $env:DEEPINFRA_TOKEN = [System.Net.NetworkCredential]::new("", $segredo).Password
+    Remove-Variable segredo
+
+O token vale só para processos iniciados neste terminal. Não o coloque em
+conf/*.yaml, CSVs, notebooks ou no repositório. Para retirá-lo:
+Remove-Item Env:DEEPINFRA_TOKEN
+
+3. REABRIR OS RESULTADOS QUE JÁ EXISTEM
+---------------------------------------
+
+    pixi run report viabilidade --run viabilidade_qwen_corrigida
+    pixi run report fakebr_multimodel --run piloto_multimodel_qwen_corrigido --stage dev
+
+Arquivos principais:
+
+    runs/viabilidade_qwen_corrigida/summary.csv
+    runs/viabilidade_qwen_corrigida/results.csv
+    runs/piloto_multimodel_qwen_corrigido/report_dev/metrics.csv
+    runs/piloto_multimodel_qwen_corrigido/report_dev/per_class.csv
+    runs/piloto_multimodel_qwen_corrigido/report_dev/confusion.csv
+    runs/piloto_multimodel_qwen_corrigido/report_dev/repeat_summary.csv
+
+As figuras ficam na mesma pasta report_dev/ (ou report_eval/; na viabilidade,
+report/). Para gerar também PDF (ou SVG), acrescente o formato:
+
+    pixi run report fakebr_multimodel --run piloto_multimodel_qwen_corrigido --stage dev "report.formats=[png,pdf]"
+
+NOTEBOOK: notebooks/resultados.ipynb faz o mesmo de forma interativa. Abra com
+"pixi run notebook" (navegador) ou no VS Code escolhendo o kernel
+.pixi\envs\default. Edite a primeira célula de código (EXPERIMENTO, RUN,
+ETAPA, FORMATOS, RECORTE) e use "Run All": ele gera o relatório, mostra as
+tabelas e as figuras e lista os PNG/PDF criados. EXECUTAR_ETAPAS permite rodar
+etapas antes do relatório (por exemplo ["prepare", "dev"]); fica vazio por
+padrão porque pode gerar custos. Limpe as saídas antes de versionar o notebook.
+
+Runs criados antes da versão 0.2 (só com config.json) são convertidos
+automaticamente no primeiro uso: o programa cria experiment.yaml ao lado dos
+arquivos antigos, que não são alterados, depois de verificar os hashes.
+
+4. RODAR UMA NOVA VIABILIDADE
+----------------------------
+
+Use um nome novo de run. Esta etapa usa textos sintéticos, não o corpus.
+
+    pixi run experiment viabilidade --run viabilidade_nova
+    pixi run report viabilidade --run viabilidade_nova
+
+Confira em runs/viabilidade_nova/summary.csv: base_approved, valid, invalid,
+model_mismatch, technical_errors, usage_missing e provider_cost_usd.
+base_approved=True significa que as cinco sondas básicas passaram pelos
+critérios técnicos; não é uma medida de acurácia. results.csv tem as respostas
+e costs.csv as tentativas cobradas ou possivelmente cobradas.
+
+Para incluir a sonda de logprobs (uma chamada extra por modelo), decida ao
+criar o run:
+
+    pixi run experiment viabilidade --run viabilidade_logprobs experiment.include_logprobs_probe=true
+
+5. RODAR UM NOVO PILOTO
+----------------------
+
+Modelos, prompts, temperaturas, repetições e tamanho da amostra estão em
+conf/experiment/fakebr_multimodel.yaml. Use um nome de run ainda não usado:
+
+    pixi run experiment fakebr_multimodel --run piloto_novo --stage prepare
+    pixi run experiment fakebr_multimodel --run piloto_novo --stage dev
+    pixi run report fakebr_multimodel --run piloto_novo --stage dev
+
+"prepare" sorteia o manifesto e congela a configuração em
+runs/piloto_novo/experiment.yaml, sem chamar a API. "dev" executa a amostra de
+desenvolvimento. Verifique respostas, métricas e custos antes de "eval":
+
+    pixi run experiment fakebr_multimodel --run piloto_novo --stage eval
+    pixi run report fakebr_multimodel --run piloto_novo --stage eval
+
+Mudanças pontuais podem ir como overrides no "prepare", por exemplo:
+
+    pixi run experiment fakebr_multimodel --run piloto_qwen --stage prepare "experiment.models=[qwen38_27b]" "experiment.prompts=[A,B,C]"
+
+Para retomar uma etapa interrompida, repita o mesmo comando "dev" ou "eval".
+Respostas concluídas são puladas. Ao retomar só é possível mudar o ritmo da
+API, por exemplo api.concurrency=8 ou api.target_rps=20, e recortes do plano:
+
+    pixi run experiment fakebr_multimodel --run piloto_novo --stage dev "select.temperatures=[0.0]"
+    pixi run report fakebr_multimodel --run piloto_novo --stage dev "select.models=[qwen38_27b]"
+
+Qualquer outra mudança (modelos, prompts, max_tokens...) exige um run NOVO. O
+programa recusa a mudança com uma mensagem. As requisições idênticas do run
+anterior vêm do cache, sem custo.
+
+Se um modelo responder com erro permanente (por exemplo 404, modelo
+inexistente) já na primeira chamada, só aquele modelo/temperatura é pulado; os
+demais continuam. Um erro de autenticação (401) interrompe tudo depois que as
+chamadas em andamento terminam. Em ambos os casos, o comando termina com erro e
+lista o que ficou pendente.
+
+6. CRIAR UM EXPERIMENTO NOVO
+---------------------------
+
+Copie conf/experiment/fakebr_multimodel.yaml para conf/experiment/meu_exp.yaml
+e altere o que quiser. Depois:
+
+    pixi run experiment meu_exp --run meu_exp_v1 --stage prepare
+
+Novo modelo: conf/models/<nome>.yaml (copie um existente). Novo prompt: crie
+conf/prompts/<nome>_v2.yaml; não edite o veracidade_v1.yaml, porque qualquer
+caractere alterado muda as requisições. Um experimento com lógica diferente
+precisa de um executor em src/fakebr/experiments/ (veja o __init__.py dessa
+pasta).
+
+7. VERIFICAR OS CUSTOS
+---------------------
+
+    pixi run costs
+    pixi run costs --no-sync
+
+O primeiro sincroniza os costs.csv de runs/*/ com o livro-caixa central, sem
+duplicar tentativas, e mostra o total em US$ por experimento e modelo. O
+segundo só lê o livro-caixa.
+
+    runs/custos_totais.csv                 histórico consolidado
+    runs/<run>/costs.csv                   cada tentativa de chamada
+    runs/<run>/cost_summary.csv            resumo do piloto por condição
+    runs/<run>/summary.csv                 resumo da viabilidade, inclusive custo
+
+accounted_cost_usd usa provider_cost_usd quando disponível e, na falta dele,
+calculated_cost_usd. Se ambos faltarem, o custo é desconhecido: um campo vazio
+NÃO significa cobrança zero. Confirme o valor faturado no painel da DeepInfra.
+Toda tentativa entra no livro-caixa antes de a resposta ser interpretada;
+respostas malformadas também ficam registradas.
+
+8. CACHE, BACKUP E PROBLEMAS COMUNS
+----------------------------------
+
+As respostas ficam em cache/responses/ (piloto) e cache/viability/ (sondas),
+em arquivos .pkl indexados pelo hash da requisição. Para reimportar as
+respostas de um run:
+
+    pixi run cache-import --run piloto_multimodel_qwen_corrigido
+
+Guarde backup de runs/, cache/, conf/, pyproject.toml e pixi.lock. Não carregue
+arquivos .pkl recebidos de terceiros: pickle não é seguro para dados não
+confiáveis.
+
+Mensagens comuns:
+- "está congelado neste run": crie um run novo em vez de mudar o plano.
+- "Dataset não encontrado": rode pixi run fetch-data ou confira paths.data.
+- "difere da versão esperada": o corpus em data/ não é a revisão fixada.
+- Erro de autenticação: confira DEEPINFRA_TOKEN no mesmo terminal.
+Antes de repetir uma chamada com falha, confira costs.csv: tentativas com erro
+podem ter sido cobradas mesmo sem resposta aproveitável.

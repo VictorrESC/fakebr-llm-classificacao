@@ -1,0 +1,9 @@
+# Preços de referência (US$ por milhão de tokens), usados apenas quando a
+# DeepInfra não informa estimated_cost.
+id: deepseek-ai/DeepSeek-V4.1-Flash
+extra_body:
+  reasoning_effort: "none"
+pricing:
+  input_usd_per_million: 0.14
+  output_usd_per_million: 0.42
+  cached_usd_per_million: 0.004

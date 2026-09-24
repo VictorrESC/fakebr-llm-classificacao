@@ -1,0 +1,10 @@
+# Preços de referência (US$ por milhão de tokens), usados apenas quando a
+# DeepInfra não informa estimated_cost.
+id: Qwen/Qwen3.8-27B
+extra_body:
+  chat_template_kwargs:
+    enable_thinking: false
+pricing:
+  input_usd_per_million: 0.15
+  output_usd_per_million: 1.875
+  cached_usd_per_million: 0.038

@@ -1,0 +1,53 @@
+# Configuração comum a todos os experimentos. A CLI escolhe o experimento
+# (conf/experiment/<nome>.yaml) e aplica os overrides do terminal por cima.
+#
+# Depois da primeira etapa de um run, a seção "experiment" e as chaves de "api"
+# que alteram requisições (base_url, enable_prompt_cache_key) ficam congeladas
+# em runs/<run>/experiment.yaml. Editar este arquivo não afeta runs existentes.
+defaults:
+  - _self_
+  - experiment: null
+
+# Caminhos relativos à raiz do projeto (a pasta com pyproject.toml), ou absolutos.
+paths:
+  data: data/raw
+  runs: runs
+  cache: cache
+  ledger: runs/custos_totais.csv
+
+# Corpora conhecidos; "pixi run fetch-data" baixa a revisão indicada.
+datasets:
+  fakebr:
+    dir: Fake.br-Corpus
+    loader: fakebr_pairs
+    repository: https://github.com/roneysco/Fake.br-Corpus
+    revision: 780f5516c4ae070761632d98ac3368f3ded09d35
+    # SHA-256 dos textos (fake/ e true/ de full_texts), independente do SO.
+    fingerprint:
+      full_texts: 058f7ad2c7975283115d4b0efc1744e18d2cf3b40c9a5ad861758de97fdd9ec8
+      size_normalized_texts: b4fcf704421f05621b66ad1f015bd23d73c7f166820f77946e4501871ebfe394
+
+api:
+  base_url: https://api.deepinfra.com/v1/openai
+  enable_prompt_cache_key: true
+  token_env: DEEPINFRA_TOKEN
+  # Opções abaixo não mudam as requisições e podem ser alteradas ao retomar um run.
+  start_rps: 5.0
+  target_rps: 75.0
+  ramp_step_rps: 5.0
+  ramp_every_successes: 20
+  concurrency: 64
+  timeout_seconds: 120
+  max_attempts: 3
+
+# Opções de relatório; não alteram resultados e podem mudar a qualquer momento,
+# ex.: "report.formats=[png,pdf]" (aceita png, pdf, svg).
+report:
+  formats: [png]
+
+# Recorte opcional do plano congelado para executar ou relatar só uma parte,
+# ex.: select.temperatures=[0.0] select.models=[Qwen/Qwen3.8-27B]
+select:
+  models: null
+  temperatures: null
+  prompts: null

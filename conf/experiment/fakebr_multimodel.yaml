@@ -1,0 +1,32 @@
+# @package _global_
+# Classificação do Fake.Br: modelos × temperaturas × prompts × repetições,
+# com amostra "dev" para inspeção e "eval" para o resultado final.
+#
+# Para uma variação (outros modelos, prompts, temperaturas ou pares), copie este
+# arquivo com outro nome; não é preciso alterar código.
+experiment:
+  runner: multimodel
+  description: Classificação multimodelo do Fake.Br (etapas prepare, dev, eval)
+  dataset:
+    name: fakebr
+    texts: full_texts        # ou size_normalized_texts
+  seed: 20260923
+  dev_pairs: 10
+  eval_pairs: 200
+  prompt_set: veracidade_v1  # conf/prompts/veracidade_v1.yaml
+  prompts: [A]
+  models:                    # nomes de conf/models/*.yaml
+    - deepseek_v41_flash
+    - qwen38_27b
+    - gemma4_31b
+  conditions:
+    - temperature: 0.0
+      repetitions: 1
+    - temperature: 0.5
+      repetitions: 3
+    - temperature: 1.0
+      repetitions: 3
+  top_p: 1.0
+  max_tokens: 16
+  # Intervalo bootstrap por pares do Macro-F1 no relatório eval (T=0).
+  bootstrap_repeats: 500
