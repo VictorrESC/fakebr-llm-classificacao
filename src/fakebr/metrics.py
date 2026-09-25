@@ -49,6 +49,38 @@ def summarize(rows: list[dict], labels: tuple[str, ...]) -> dict:
     }
 
 
+def fit_length_rule(train: list[tuple[int, str]], labels: tuple[str, str]) -> dict:
+    """Melhor regra "palavras > limiar => rótulo" em ``train`` (pares palavras, rótulo).
+
+    Testa os dois sentidos e todos os limiares observados; em empate, o menor limiar.
+    """
+    import numpy as np
+
+    if len(labels) != 2 or not train:
+        raise ValueError("A regra de comprimento requer dois rótulos e dados de ajuste.")
+    words = np.array([w for w, _ in train])
+    first = np.array([label == labels[0] for _, label in train])
+    thresholds = np.unique(words)
+    # Quantos de cada rótulo têm palavras <= limiar.
+    order = np.argsort(words, kind="stable")
+    ends = np.searchsorted(words[order], thresholds, side="right")
+    first_le = np.concatenate([[0], np.cumsum(first[order])])[ends]
+    second_le = ends - first_le
+    n_first, n_second = int(first.sum()), int((~first).sum())
+    # accuracy[above][i]: acerto com limiar thresholds[i] e "longo => labels[above]".
+    accuracy = {1: (first_le + n_second - second_le) / len(train),
+                0: (second_le + n_first - first_le) / len(train)}
+    above = max(accuracy, key=lambda side: (accuracy[side].max(), side))
+    index = int(np.argmax(accuracy[above]))  # primeira ocorrência = menor limiar
+    return {"threshold_words": int(thresholds[index]), "above_label": labels[above],
+            "below_label": labels[1 - above], "fit_accuracy": float(accuracy[above][index]),
+            "fit_texts": len(train)}
+
+
+def apply_length_rule(rule: dict, words: int) -> str:
+    return rule["above_label"] if words > rule["threshold_words"] else rule["below_label"]
+
+
 def pair_bootstrap(rows: list[dict], labels: tuple[str, ...], seed: int,
                    repeats: int = 2000) -> list[float]:
     """IC 95% do Macro-F1 reamostrando pares (os dois documentos de cada par juntos)."""

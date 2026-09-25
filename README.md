@@ -53,6 +53,10 @@ pixi run costs
 SVG, acrescente `"report.formats=[png,pdf]"`. As figuras não têm data embutida:
 o mesmo run gera sempre os mesmos arquivos.
 
+O relatório multimodelo inclui `length_baseline.csv`: a regra "palavras > limiar",
+ajustada nos pares do corpus fora da amostra do run, como referência do quanto o
+comprimento sozinho resolve a tarefa (linha tracejada em `macro_f1`).
+
 `notebooks/resultados.ipynb` faz o mesmo de forma interativa: escolha
 experimento, run e etapa na célula de parâmetros, e ele gera o relatório em PNG
 e PDF, mostra as tabelas e as figuras. Opcionalmente, também executa etapas antes
@@ -87,6 +91,8 @@ do relatório. Abra com `pixi run notebook` ou, no VS Code, selecione o kernel
   `size_normalized_texts`...): copie `conf/experiment/fakebr_multimodel.yaml`
   para `conf/experiment/novo.yaml` e edite. Não é preciso mexer em código.
   `pixi run experiment novo --run ... --stage prepare` já funciona.
+- **Mesmos pares de outro run** (comparação pareada): `pairs_from: <run>` no YAML ou
+  `experiment.pairs_from=<run>` no `prepare`. Ex.: `conf/experiment/fakebr_normalizado.yaml`.
 - **Novo modelo:** crie `conf/models/<nome>.yaml` e cite `<nome>` em `models:`.
 - **Novo prompt:** crie `conf/prompts/<nome>_v2.yaml` (não edite um existente) e
   aponte `prompt_set:` para ele.

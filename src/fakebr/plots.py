@@ -73,8 +73,12 @@ def _short(labels: tuple[str, ...]) -> list[str]:
 
 def figures(report_dir: Path, metrics: dict[str, dict], repeat_rows: list[dict],
             cost_rows: list[dict], stage: str, labels: tuple[str, ...],
-            formats: tuple[str, ...] = ("png",)) -> list[Path]:
-    """Figuras do relatório multimodelo; devolve os arquivos gravados."""
+            formats: tuple[str, ...] = ("png",),
+            baseline_macro_f1: float | None = None) -> list[Path]:
+    """Figuras do relatório multimodelo; devolve os arquivos gravados.
+
+    ``baseline_macro_f1`` (regra de comprimento) vira uma linha tracejada no Macro-F1.
+    """
     import matplotlib
     import numpy as np
 
@@ -121,8 +125,11 @@ def figures(report_dir: Path, metrics: dict[str, dict], repeat_rows: list[dict],
         ax.errorbar(x + offset, means, yerr=deviations, marker="o", capsize=4,
                     linewidth=1.8, label=series_label(model_id, prompt_id, "prompt "),
                     color=color)
+    if baseline_macro_f1 is not None:
+        ax.axhline(baseline_macro_f1, color="0.35", linestyle="--", linewidth=1.2,
+                   label=f"Baseline de comprimento ({baseline_macro_f1:.2f})")
     ax.set_xticks(x, [f"{temperature:g}" for temperature in temperature_order])
-    ax.set_ylim(0, 1)
+    ax.set_ylim(0, 1.03)  # folga: uma linha em 1,0 não some na borda
     ax.set_xlabel("Temperatura")
     ax.set_ylabel("Macro-F1")
     ax.set_title(f"Macro-F1 por modelo e temperatura — {stage}")
@@ -161,23 +168,24 @@ def figures(report_dir: Path, metrics: dict[str, dict], repeat_rows: list[dict],
     fig.tight_layout()
     saved += _save(fig, report_dir, "per_class", formats)
 
-    # Uma matriz por modelo e temperatura. Com repetições, exibe a média das
-    # contagens por repetição (cada painel continua representando n notícias).
+    # Uma matriz por modelo e temperatura. Com repetições, as contagens são
+    # somadas (inteiras; n = notícias × repetições). A cor é a proporção da
+    # linha (recall por classe), comparável entre painéis com n diferente.
     predictions = (*labels, INVALID)
     short = _short(labels)
     for prompt_id in prompt_order:
-        matrices = {}
+        matrices, repetitions = {}, {}
         for model_id in model_order:
             for temperature in temperature_order:
                 scores = [item[1] for item in grouped.get(
                     (model_id, temperature, prompt_id), [])]
                 if not scores:
                     continue
-                matrices[(model_id, temperature)] = np.mean([
+                matrices[(model_id, temperature)] = np.sum([
                     [[score["confusion"][gold][pred] for pred in predictions] for gold in labels]
                     for score in scores
-                ], axis=0)
-        maximum = max((matrix.max() for matrix in matrices.values()), default=1)
+                ], axis=0).astype(int)
+                repetitions[(model_id, temperature)] = len(scores)
         fig = _figure(figsize=(4 * len(temperature_order), 3.1 * len(model_order)))
         axes = fig.subplots(len(model_order), len(temperature_order), squeeze=False)
         image = None
@@ -188,25 +196,29 @@ def figures(report_dir: Path, metrics: dict[str, dict], repeat_rows: list[dict],
                 if matrix is None:
                     ax.axis("off")
                     continue
-                image = ax.imshow(matrix, cmap="Blues", vmin=0, vmax=maximum)
+                totals = matrix.sum(axis=1, keepdims=True)
+                share = np.divide(matrix, totals, out=np.zeros(matrix.shape), where=totals > 0)
+                image = ax.imshow(share, cmap="Blues", vmin=0, vmax=1)
                 ax.set_xticks(range(len(predictions)), [*short, "Inv."])
                 ax.set_yticks(range(len(labels)), short)
-                ax.set_title(f"{model_label(model_id)} — T={temperature:g}", fontsize=9)
+                reps = repetitions[(model_id, temperature)]
+                ax.set_title(f"{model_label(model_id)} — T={temperature:g}\n"
+                             f"{reps} repetiç{'ão' if reps == 1 else 'ões'}, n={int(matrix.sum())}",
+                             fontsize=9)
                 if row_index == len(model_order) - 1:
                     ax.set_xlabel("Predição")
                 if column_index == 0:
                     ax.set_ylabel("Rótulo do corpus")
                 for i in range(len(labels)):
                     for j in range(len(predictions)):
-                        value = matrix[i, j]
-                        text_value = str(int(value)) if float(value).is_integer() else f"{value:.1f}"
-                        color = "white" if value > maximum * .55 else "black"
-                        ax.text(j, i, text_value, ha="center", va="center", color=color)
-        fig.suptitle(f"Matrizes de confusão — {stage}, prompt {prompt_id}")
-        fig.subplots_adjust(top=.91, right=.86, bottom=.08, hspace=.5, wspace=.35)
+                        color = "white" if share[i, j] > .55 else "black"
+                        ax.text(j, i, str(matrix[i, j]), ha="center", va="center", color=color)
+        fig.suptitle(f"Matrizes de confusão — {stage}, prompt {prompt_id} "
+                     "(contagens somadas nas repetições)")
+        fig.subplots_adjust(top=.89, right=.86, bottom=.08, hspace=.6, wspace=.35)
         if image is not None:
             color_axis = fig.add_axes([.9, .16, .018, .66])
-            fig.colorbar(image, cax=color_axis, label="Média por repetição")
+            fig.colorbar(image, cax=color_axis, label="Proporção da linha (recall)")
         stem = "confusion" if len(prompt_order) == 1 else f"confusion_prompt_{prompt_id}"
         saved += _save(fig, report_dir, stem, formats)
 

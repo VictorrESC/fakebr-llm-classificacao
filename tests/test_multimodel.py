@@ -109,6 +109,54 @@ class MultimodelTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "não existe.*--stage prepare"):
                 ws.cli(*EXPERIMENT, "--run", "outro", "--stage", "dev")
 
+    def test_pairs_from_and_length_baseline(self):
+        with workspace() as ws:
+            corpus = ws.corpus(pairs=6)
+            # Verdadeiras longas: a regra de comprimento separa as classes.
+            for index in range(1, 7):
+                (ws.base / "data" / "corpus" / "full_texts" / "true" / f"{index}.txt").write_text(
+                    "palavra " * (50 + index), encoding="utf-8")
+            sizes = ("experiment.dev_pairs=1", "experiment.eval_pairs=2")
+            ws.cli(*EXPERIMENT, "--run", "origem", "--stage", "prepare", *sizes, *corpus)
+            ws.cli(*EXPERIMENT, "--run", "copia", "--stage", "prepare", *sizes, *corpus,
+                   "experiment.seed=999", "experiment.pairs_from=origem")
+
+            def pairs(run):
+                return [(r["stage"], r["pair_id"]) for r in read_csv(ws.run_dir(run) / "manifest.csv")]
+            self.assertEqual(pairs("copia"), pairs("origem"))
+            info = json.loads((ws.run_dir("copia") / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(info["pairs_from"]["run"], "origem")
+            with self.assertRaisesRegex(ValueError, "Pares fixados: dev=1, eval=2"):
+                ws.cli(*EXPERIMENT, "--run", "maior", "--stage", "prepare", *corpus,
+                       "experiment.dev_pairs=1", "experiment.eval_pairs=3",
+                       "experiment.pairs_from=origem")
+            with self.assertRaisesRegex(FileNotFoundError, "pairs_from"):
+                ws.cli(*EXPERIMENT, "--run", "orfao", "--stage", "prepare", *sizes, *corpus,
+                       "experiment.pairs_from=inexistente")
+
+            ws.cli(*EXPERIMENT, "--run", "copia", "--stage", "eval", ONLY_T0)
+            ws.cli(*REPORT, "--run", "copia", "--stage", "eval", ONLY_T0)
+            [baseline] = read_csv(ws.run_dir("copia") / "report_eval" / "length_baseline.csv")
+            # Ajuste só nos 3 pares fora da amostra; o eval (2 pares) não entra.
+            self.assertEqual(baseline["fit_pairs"], "3")
+            self.assertEqual(baseline["above_label"], "VERDADEIRA")
+            self.assertEqual(float(baseline["accuracy"]), 1.0)
+            self.assertNotEqual(baseline["macro_f1_ci95_low"], "")
+
+    def test_length_rule(self):
+        from fakebr.metrics import apply_length_rule, fit_length_rule
+
+        labels = ("FALSA", "VERDADEIRA")
+        train = [(10, "FALSA"), (20, "FALSA"), (30, "VERDADEIRA"), (40, "VERDADEIRA")]
+        rule = fit_length_rule(train, labels)
+        self.assertEqual((rule["threshold_words"], rule["above_label"], rule["fit_accuracy"]),
+                         (20, "VERDADEIRA", 1.0))
+        self.assertEqual(apply_length_rule(rule, 25), "VERDADEIRA")
+        self.assertEqual(apply_length_rule(rule, 20), "FALSA")
+        # Sentido invertido: textos longos são os falsos.
+        flipped = fit_length_rule([(w, labels[1 - labels.index(g)]) for w, g in train], labels)
+        self.assertEqual((flipped["threshold_words"], flipped["above_label"]), (20, "FALSA"))
+
     def test_empty_choices_and_missing_responses(self):
         with workspace() as ws:
             out = self.prepare(ws)

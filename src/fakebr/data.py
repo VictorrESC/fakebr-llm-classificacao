@@ -71,12 +71,27 @@ def fingerprint(entries: list[tuple[str, str]]) -> str:
     return canonical_hash(sorted(entries))
 
 
+def word_counts(dataset: Path, texts: str, labels: dict[str, str]) -> dict[str, dict[str, int]]:
+    """Palavras de cada texto dos pares completos: ``{pair_id: {rótulo: palavras}}``.
+
+    Conta como o manifesto (``len(texto.split())``).
+    """
+    folders = {cls: files_by_id(dataset / texts / cls) for cls in labels}
+    common = set.intersection(*(set(files) for files in folders.values()))
+    return {pair_id: {label: len(read_text(folders[cls][pair_id]).split())
+                      for cls, label in labels.items()}
+            for pair_id in sorted(common, key=id_order)}
+
+
 def build_manifest(dataset: Path, texts: str, labels: dict[str, str], seed: int,
                    dev_pairs: int, eval_pairs: int,
-                   expected_fingerprint: str | None = None) -> tuple[list[dict], dict]:
+                   expected_fingerprint: str | None = None,
+                   pairs: dict[str, list[str]] | None = None) -> tuple[list[dict], dict]:
     """Sorteia pares dev/eval antes de qualquer resposta do modelo.
 
     ``labels`` mapeia a pasta da classe (fake, true) ao rótulo pedido ao modelo.
+    ``pairs`` fixa os pares de cada etapa (ex.: os de outro run) em vez de sortear;
+    todos precisam ser elegíveis neste corpus.
     """
     folders = {cls: files_by_id(dataset / texts / cls) for cls in labels}
     common = set.intersection(*(set(files) for files in folders.values()))
@@ -127,8 +142,22 @@ def build_manifest(dataset: Path, texts: str, labels: dict[str, str], seed: int,
     eligible = sorted(set(records) - set(exclusions), key=id_order)
     if len(eligible) < dev_pairs + eval_pairs:
         raise ValueError(f"Só {len(eligible)} pares elegíveis; requer {dev_pairs + eval_pairs}.")
-    random.Random(seed).shuffle(eligible)
-    selected = {"dev": eligible[:dev_pairs], "eval": eligible[dev_pairs:dev_pairs + eval_pairs]}
+    if pairs is None:
+        random.Random(seed).shuffle(eligible)
+        selected = {"dev": eligible[:dev_pairs],
+                    "eval": eligible[dev_pairs:dev_pairs + eval_pairs]}
+    else:
+        selected = {stage: list(pairs.get(stage, [])) for stage in ("dev", "eval")}
+        chosen = selected["dev"] + selected["eval"]
+        if (len(selected["dev"]), len(selected["eval"])) != (dev_pairs, eval_pairs):
+            raise ValueError(f"Pares fixados: dev={len(selected['dev'])}, "
+                             f"eval={len(selected['eval'])}; o experimento pede "
+                             f"dev={dev_pairs}, eval={eval_pairs}.")
+        if len(set(chosen)) != len(chosen):
+            raise ValueError("Pares fixados repetidos ou presentes em dev e eval.")
+        not_eligible = sorted(set(chosen) - set(eligible), key=id_order)
+        if not_eligible:
+            raise ValueError(f"Pares fixados ausentes ou excluídos em {texts}: {not_eligible}")
     rows = [{"stage": stage, **row}
             for stage, ids in selected.items() for pair_id in ids for row in records[pair_id]]
     info = {
@@ -145,7 +174,9 @@ def build_manifest(dataset: Path, texts: str, labels: dict[str, str], seed: int,
                                    for row in records[pair_id] if row["gold_label"] == label])
             for label in labels.values()
         },
-        "note": "Sorteio de pares antes de qualquer resposta do modelo; textos completos sem truncamento.",
+        "note": ("Sorteio de pares antes de qualquer resposta do modelo; textos sem truncamento "
+                 "adicional." if pairs is None else
+                 "Pares fixados (de outro run), não sorteados; textos sem truncamento adicional."),
     }
     return rows, info
 

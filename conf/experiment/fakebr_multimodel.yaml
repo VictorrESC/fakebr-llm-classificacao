@@ -13,6 +13,9 @@ experiment:
   seed: 20260923
   dev_pairs: 10
   eval_pairs: 200
+  # Nome de um run em runs/ cujos pares dev/eval serão reaproveitados em vez de
+  # sorteados (comparação pareada entre runs); null = sorteio pela seed.
+  pairs_from: null
   prompt_set: veracidade_v1  # conf/prompts/veracidade_v1.yaml
   prompts: [A]
   models:                    # nomes de conf/models/*.yaml

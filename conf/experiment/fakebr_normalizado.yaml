@@ -1,0 +1,30 @@
+# @package _global_
+# Fake.Br com textos de tamanho normalizado (size_normalized_texts), que remove o
+# atalho de comprimento de full_texts (lá, "mais de ~340 palavras => VERDADEIRA"
+# acerta ~96% do eval). Mede também a sensibilidade à redação do prompt (A, B, C)
+# e o determinismo da API em T=0 (3 repetições).
+#
+# Usa os mesmos pares dev/eval do piloto em full_texts, para comparar as duas
+# versões notícia a notícia.
+experiment:
+  runner: multimodel
+  description: Fake.Br normalizado, prompts A/B/C, T=0 com 3 repetições
+  dataset:
+    name: fakebr
+    texts: size_normalized_texts
+  seed: 20260923
+  dev_pairs: 10
+  eval_pairs: 200
+  pairs_from: piloto_multimodel_qwen_corrigido
+  prompt_set: veracidade_v1  # conf/prompts/veracidade_v1.yaml
+  prompts: [A, B, C]
+  models:
+    - deepseek_v41_flash
+    - qwen38_27b
+    - gemma4_31b
+  conditions:
+    - temperature: 0.0
+      repetitions: 3
+  top_p: 1.0
+  max_tokens: 16
+  bootstrap_repeats: 500

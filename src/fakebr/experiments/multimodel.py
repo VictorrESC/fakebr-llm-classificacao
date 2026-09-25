@@ -17,7 +17,7 @@ from .. import data
 from ..api import Executor, Outcome, Request, first_choice, request_payload, require_token
 from ..cache import CacheSpec
 from ..io import append_csv, atomic_json, now_utc, read_csv, sha256, write_csv
-from ..metrics import pair_bootstrap, summarize
+from ..metrics import apply_length_rule, fit_length_rule, pair_bootstrap, summarize
 from ..plots import condition_name, condition_parts, figures, output_formats
 from ..prompts import INVALID
 from ..project import Run
@@ -82,6 +82,9 @@ def freeze(cfg: dict, root: Path) -> dict:
         raise ValueError("Há temperaturas repetidas em experiment.conditions")
     if int(experiment["dev_pairs"]) < 0 or int(experiment["eval_pairs"]) < 0:
         raise ValueError("dev_pairs e eval_pairs não podem ser negativos")
+    pairs_from = experiment.get("pairs_from")
+    if pairs_from is not None and (not isinstance(pairs_from, str) or not pairs_from):
+        raise ValueError("experiment.pairs_from deve ser o nome de um run em runs/ ou null")
     return {
         "runner": experiment["runner"], "description": experiment.get("description", ""),
         "dataset": {"name": dataset_name, "loader": source.get("loader", "fakebr_pairs"),
@@ -89,6 +92,7 @@ def freeze(cfg: dict, root: Path) -> dict:
                     "fingerprint": (source.get("fingerprint") or {}).get(texts)},
         "seed": int(experiment["seed"]),
         "dev_pairs": int(experiment["dev_pairs"]), "eval_pairs": int(experiment["eval_pairs"]),
+        "pairs_from": pairs_from,
         "prompt_set": prompts, "prompts": planned_prompts,
         "models": freeze_models(root, experiment["models"]),
         "conditions": conditions,
@@ -281,15 +285,34 @@ def prepare(run: Run) -> None:
     dataset = _dataset_dir(run)
     if not dataset.is_dir():
         raise FileNotFoundError(f"Dataset não encontrado: {dataset}. Rode 'pixi run fetch-data'.")
+    source = experiment.get("pairs_from")
+    pairs, source_info = _source_pairs(run, source) if source else (None, None)
     rows, info = data.build_manifest(
         dataset, experiment["dataset"]["texts"], prompt_set(experiment).labels,
         experiment["seed"], experiment["dev_pairs"], experiment["eval_pairs"],
-        experiment["dataset"].get("fingerprint"))
+        experiment["dataset"].get("fingerprint"), pairs=pairs)
+    if source_info:
+        info["pairs_from"] = source_info
     write_csv(run.out / "manifest.csv", rows, list(rows[0]))
     atomic_json(run.out / "manifest.json", info)
+    origin = f" Pares de {source}." if source else ""
     print(f"Manifesto pronto: dev={experiment['dev_pairs'] * 2}, "
-          f"eval={experiment['eval_pairs'] * 2} notícias. "
+          f"eval={experiment['eval_pairs'] * 2} notícias.{origin} "
           f"Pares excluídos={len(info['excluded_pairs'])}. Pasta: {run.out}")
+
+
+def _source_pairs(run: Run, source: str) -> tuple[dict[str, list[str]], dict]:
+    """Pares dev/eval do manifesto de outro run, na ordem em que aparecem."""
+    path = run.paths.run_dir(source) / "manifest.csv"
+    if not path.is_file():
+        raise FileNotFoundError(f"experiment.pairs_from: {path} não existe.")
+    pairs: dict[str, list[str]] = {"dev": [], "eval": []}
+    for row in read_csv(path):
+        stage_pairs = pairs.setdefault(row["stage"], [])
+        if row["pair_id"] not in stage_pairs:
+            stage_pairs.append(row["pair_id"])
+    return pairs, {"run": source,
+                   "manifest_sha256": sha256(path.read_text(encoding="utf-8"))}
 
 
 def cost_summary(out: Path) -> None:
@@ -395,12 +418,51 @@ def report(run: Run, stage: str) -> dict:
     write_csv(report_dir / "repeat_summary.csv", summary,
               ["model", "temperature", "prompt", "repetitions", "mean_macro_f1",
                "std_macro_f1", "min_macro_f1", "max_macro_f1", "disagreement_fraction"])
+    tables = ["metrics.csv", "per_class.csv", "confusion.csv", "repeat_summary.csv"]
+    baseline = _length_baseline(run, stage, rows_for_stage, labels)
+    if baseline:
+        write_csv(report_dir / "length_baseline.csv", [baseline], list(baseline))
+        tables.append("length_baseline.csv")
+        print(f"Baseline de comprimento (palavras > {baseline['threshold_words']} => "
+              f"{baseline['above_label']}): acurácia {baseline['accuracy']:.3f}, "
+              f"Macro-F1 {baseline['macro_f1']:.3f}")
+    else:
+        (report_dir / "length_baseline.csv").unlink(missing_ok=True)
     cost_summary(out)
     saved = (figures(report_dir, metrics, summary, read_csv(out / "cost_summary.csv"), stage,
-                     labels, formats) if all_rows else [])
+                     labels, formats, baseline_macro_f1=baseline and baseline["macro_f1"])
+             if all_rows else [])
     print(f"Relatório {stage}: {len(metric_rows)} condições. Métricas: {report_dir / 'metrics.csv'}")
     return {"report_dir": report_dir,
-            "tables": [report_dir / name for name in ("metrics.csv", "per_class.csv",
-                                                       "confusion.csv", "repeat_summary.csv")]
-                      + [out / "cost_summary.csv"],
+            "tables": [report_dir / name for name in tables] + [out / "cost_summary.csv"],
             "figures": saved}
+
+
+def _length_baseline(run: Run, stage: str, rows: list[dict],
+                     labels: tuple[str, ...]) -> dict | None:
+    """Regra "palavras > limiar" ajustada nos pares do corpus fora da amostra do run.
+
+    Nenhum par de dev/eval entra no ajuste, então o limiar não vê a amostra avaliada.
+    Devolve ``None`` com mais de dois rótulos ou sem pares fora da amostra.
+    """
+    if len(labels) != 2:
+        return None
+    experiment = run.experiment
+    sampled = {row["pair_id"] for row in read_csv(run.out / "manifest.csv")}
+    counts = data.word_counts(_dataset_dir(run), experiment["dataset"]["texts"],
+                              prompt_set(experiment).labels)
+    train = [(words, label) for pair_id, by_label in counts.items() if pair_id not in sampled
+             for label, words in by_label.items()]
+    if not train:
+        return None
+    rule = fit_length_rule(train, labels)
+    predicted = [{"pair_id": row["pair_id"], "gold_label": row["gold_label"],
+                  "prediction": apply_length_rule(rule, int(row["words"]))} for row in rows]
+    score = summarize(predicted, labels)
+    ci = (pair_bootstrap(predicted, labels, experiment["seed"] + 2000,
+                         repeats=experiment["bootstrap_repeats"])
+          if stage == "eval" else ["", ""])
+    return {**rule, "fit_pairs": len(train) // 2, "n": score["n"],
+            "accuracy": score["accuracy"], "balanced_accuracy": score["balanced_accuracy"],
+            "macro_f1": score["macro_f1"], "mcc_valid_only": score["mcc_valid_only"],
+            "macro_f1_ci95_low": ci[0], "macro_f1_ci95_high": ci[1]}

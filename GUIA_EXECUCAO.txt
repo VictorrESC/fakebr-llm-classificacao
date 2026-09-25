@@ -113,6 +113,22 @@ Mudanças pontuais podem ir como overrides no "prepare", por exemplo:
 
     pixi run experiment fakebr_multimodel --run piloto_qwen --stage prepare "experiment.models=[qwen38_27b]" "experiment.prompts=[A,B,C]"
 
+Para comparar dois runs notícia a notícia (ex.: full_texts x size_normalized_texts),
+use experiment.pairs_from=<run>: o "prepare" copia os pares dev/eval daquele run
+em vez de sortear (os tamanhos dev_pairs/eval_pairs precisam coincidir).
+conf/experiment/fakebr_normalizado.yaml já faz isso com o piloto em full_texts:
+
+    pixi run experiment fakebr_normalizado --run normalizado_v1 --stage prepare
+    pixi run experiment fakebr_normalizado --run normalizado_v1 --stage dev
+    pixi run report fakebr_normalizado --run normalizado_v1 --stage dev
+    pixi run experiment fakebr_normalizado --run normalizado_v1 --stage eval
+    pixi run report fakebr_normalizado --run normalizado_v1 --stage eval
+
+O relatório inclui length_baseline.csv: a regra "palavras > limiar => rótulo",
+com o limiar ajustado nos pares do corpus FORA da amostra do run, aplicada à
+etapa. Também aparece como linha tracejada em macro_f1.png. Em full_texts ela
+acerta ~96% do eval; em size_normalized_texts, ~50%.
+
 Para retomar uma etapa interrompida, repita o mesmo comando "dev" ou "eval".
 Respostas concluídas são puladas. Ao retomar só é possível mudar o ritmo da
 API, por exemplo api.concurrency=8 ou api.target_rps=20, e recortes do plano:
