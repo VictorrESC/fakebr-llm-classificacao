@@ -1,0 +1,30 @@
+# @package _global_
+# Fake.Br com os textos completos (full_texts), como circularam: experimento
+# exploratório de comportamento dos modelos no corpus. T=0 com 3 repetições
+# (o DeepSeek não é determinístico em T=0) e os mesmos pares do piloto, para
+# comparar notícia a notícia com os runs anteriores.
+#
+# Atenção ao interpretar: em full_texts o comprimento separa as classes
+# (veja report_<etapa>/length_baseline.csv).
+experiment:
+  runner: multimodel
+  description: Fake.Br textos completos, prompt A, T=0 com 3 repetições
+  dataset:
+    name: fakebr
+    texts: full_texts
+  seed: 20260923
+  dev_pairs: 10
+  eval_pairs: 200
+  pairs_from: piloto_multimodel_qwen_corrigido
+  prompt_set: veracidade_v1  # conf/prompts/veracidade_v1.yaml
+  prompts: [A]
+  models:
+    - deepseek_v41_flash
+    - qwen38_27b
+    - gemma4_31b
+  conditions:
+    - temperature: 0.0
+      repetitions: 3
+  top_p: 1.0
+  max_tokens: 16
+  bootstrap_repeats: 500

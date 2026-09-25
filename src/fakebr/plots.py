@@ -129,6 +129,7 @@ def figures(report_dir: Path, metrics: dict[str, dict], repeat_rows: list[dict],
         ax.axhline(baseline_macro_f1, color="0.35", linestyle="--", linewidth=1.2,
                    label=f"Baseline de comprimento ({baseline_macro_f1:.2f})")
     ax.set_xticks(x, [f"{temperature:g}" for temperature in temperature_order])
+    ax.set_xlim(x[0] - .5, x[-1] + .5)  # uma só temperatura: pontos agrupados, não espalhados
     ax.set_ylim(0, 1.03)  # folga: uma linha em 1,0 não some na borda
     ax.set_xlabel("Temperatura")
     ax.set_ylabel("Macro-F1")
@@ -186,7 +187,8 @@ def figures(report_dir: Path, metrics: dict[str, dict], repeat_rows: list[dict],
                     for score in scores
                 ], axis=0).astype(int)
                 repetitions[(model_id, temperature)] = len(scores)
-        fig = _figure(figsize=(4 * len(temperature_order), 3.1 * len(model_order)))
+        # Largura mínima: com uma só temperatura, o título não é cortado.
+        fig = _figure(figsize=(max(4 * len(temperature_order), 6), 3.1 * len(model_order)))
         axes = fig.subplots(len(model_order), len(temperature_order), squeeze=False)
         image = None
         for row_index, model_id in enumerate(model_order):
@@ -213,8 +215,8 @@ def figures(report_dir: Path, metrics: dict[str, dict], repeat_rows: list[dict],
                     for j in range(len(predictions)):
                         color = "white" if share[i, j] > .55 else "black"
                         ax.text(j, i, str(matrix[i, j]), ha="center", va="center", color=color)
-        fig.suptitle(f"Matrizes de confusão — {stage}, prompt {prompt_id} "
-                     "(contagens somadas nas repetições)")
+        fig.suptitle(f"Matrizes de confusão — {stage}, prompt {prompt_id}\n"
+                     "(contagens somadas nas repetições)", fontsize=11)
         fig.subplots_adjust(top=.89, right=.86, bottom=.08, hspace=.6, wspace=.35)
         if image is not None:
             color_axis = fig.add_axes([.9, .16, .018, .66])
