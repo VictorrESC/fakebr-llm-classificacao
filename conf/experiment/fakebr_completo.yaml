@@ -1,8 +1,10 @@
 # @package _global_
 # Fake.Br com os textos completos (full_texts), como circularam: experimento
 # exploratório de comportamento dos modelos no corpus. T=0 com 3 repetições
-# (o DeepSeek não é determinístico em T=0) e os mesmos pares do piloto, para
-# comparar notícia a notícia com os runs anteriores.
+# (o DeepSeek não é determinístico em T=0). Com a mesma seed, o sorteio de 500
+# pares no eval estende o do piloto: os 10 pares do dev e os 200 primeiros do
+# eval são os mesmos, o que permite comparar notícia a notícia com os runs
+# anteriores no subconjunto comum.
 #
 # Atenção ao interpretar: em full_texts o comprimento separa as classes
 # (veja report_<etapa>/length_baseline.csv).
@@ -14,8 +16,8 @@ experiment:
     texts: full_texts
   seed: 20260923
   dev_pairs: 10
-  eval_pairs: 200
-  pairs_from: piloto_multimodel_qwen_corrigido
+  eval_pairs: 500
+  pairs_from: null
   prompt_set: veracidade_v1  # conf/prompts/veracidade_v1.yaml
   prompts: [A]
   models:
