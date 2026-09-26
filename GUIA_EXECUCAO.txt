@@ -44,8 +44,14 @@ Remove-Item Env:DEEPINFRA_TOKEN
 3. REABRIR OS RESULTADOS QUE JÁ EXISTEM
 ---------------------------------------
 
-    pixi run report viabilidade --run viabilidade_qwen_corrigida
-    pixi run report fakebr_multimodel --run piloto_multimodel_qwen_corrigido --stage dev
+    pixi run report                          # último run usado, etapa mais avançada
+    pixi run report --run completo_v1        # outro run (passa a ser o run atual)
+    pixi run report --run completo_v1 --stage dev
+
+O experimento não precisa ser informado: vem do experiment.yaml do run. Sem
+--run, o relatório é do último run usado por qualquer comando (marcado com "*"
+em "pixi run status"). Sem --stage, é a etapa mais avançada com respostas
+(eval, se houver; senão dev). O relatório gera PNG e PDF.
 
 Arquivos principais:
 
@@ -57,17 +63,16 @@ Arquivos principais:
     runs/piloto_multimodel_qwen_corrigido/report_dev/repeat_summary.csv
 
 As figuras ficam na mesma pasta report_dev/ (ou report_eval/; na viabilidade,
-report/). Para gerar também PDF (ou SVG), acrescente o formato:
-
-    pixi run report fakebr_multimodel --run piloto_multimodel_qwen_corrigido --stage dev "report.formats=[png,pdf]"
+report/). Para outros formatos: "report.formats=[png]" ou "report.formats=[svg]".
 
 NOTEBOOK: notebooks/resultados.ipynb faz o mesmo de forma interativa. Abra com
 "pixi run notebook" (navegador) ou no VS Code escolhendo o kernel
-.pixi\envs\default. Edite a primeira célula de código (EXPERIMENTO, RUN,
-ETAPA, FORMATOS, RECORTE) e use "Run All": ele gera o relatório, mostra as
-tabelas e as figuras e lista os PNG/PDF criados. EXECUTAR_ETAPAS permite rodar
-etapas antes do relatório (por exemplo ["prepare", "dev"]); fica vazio por
-padrão porque pode gerar custos. Limpe as saídas antes de versionar o notebook.
+.pixi\envs\default. Sem editar nada, "Run All" mostra o relatório do último run
+usado: gera os arquivos, exibe tabelas e figuras e lista os PNG/PDF criados.
+Para outro run, defina RUN (e, se quiser, ETAPA) na célula de parâmetros.
+EXECUTAR_ETAPAS permite rodar etapas antes do relatório (por exemplo
+["prepare", "dev"]); fica vazio por padrão porque pode gerar custos. Limpe as
+saídas antes de versionar o notebook.
 
 Runs criados antes da versão 0.2 (só com config.json) são convertidos
 automaticamente no primeiro uso: o programa cria experiment.yaml ao lado dos
@@ -79,7 +84,7 @@ arquivos antigos, que não são alterados, depois de verificar os hashes.
 Use um nome novo de run. Esta etapa usa textos sintéticos, não o corpus.
 
     pixi run experiment viabilidade --run viabilidade_nova
-    pixi run report viabilidade --run viabilidade_nova
+    pixi run report
 
 Confira em runs/viabilidade_nova/summary.csv: base_approved, valid, invalid,
 model_mismatch, technical_errors, usage_missing e provider_cost_usd.
@@ -99,15 +104,17 @@ Modelos, prompts, temperaturas, repetições e tamanho da amostra estão em
 conf/experiment/fakebr_multimodel.yaml. Use um nome de run ainda não usado:
 
     pixi run experiment fakebr_multimodel --run piloto_novo --stage prepare
-    pixi run experiment fakebr_multimodel --run piloto_novo --stage dev
-    pixi run report fakebr_multimodel --run piloto_novo --stage dev
+    pixi run experiment --run piloto_novo --stage dev
+    pixi run report
 
-"prepare" sorteia o manifesto e congela a configuração em
+O experimento só é informado na criação (prepare); depois vem do run. --run e
+--stage continuam obrigatórios em "experiment" porque as etapas podem gerar
+custos. "prepare" sorteia o manifesto e congela a configuração em
 runs/piloto_novo/experiment.yaml, sem chamar a API. "dev" executa a amostra de
 desenvolvimento. Verifique respostas, métricas e custos antes de "eval":
 
-    pixi run experiment fakebr_multimodel --run piloto_novo --stage eval
-    pixi run report fakebr_multimodel --run piloto_novo --stage eval
+    pixi run experiment --run piloto_novo --stage eval
+    pixi run report
 
 Mudanças pontuais podem ir como overrides no "prepare", por exemplo:
 
@@ -119,10 +126,8 @@ em vez de sortear (os tamanhos dev_pairs/eval_pairs precisam coincidir).
 conf/experiment/fakebr_normalizado.yaml já faz isso com o piloto em full_texts:
 
     pixi run experiment fakebr_normalizado --run normalizado_v1 --stage prepare
-    pixi run experiment fakebr_normalizado --run normalizado_v1 --stage dev
-    pixi run report fakebr_normalizado --run normalizado_v1 --stage dev
-    pixi run experiment fakebr_normalizado --run normalizado_v1 --stage eval
-    pixi run report fakebr_normalizado --run normalizado_v1 --stage eval
+    pixi run experiment --run normalizado_v1 --stage dev
+    pixi run report
 
 O relatório inclui length_baseline.csv: a regra "palavras > limiar => rótulo",
 com o limiar ajustado nos pares do corpus FORA da amostra do run, aplicada à
@@ -133,8 +138,8 @@ Para retomar uma etapa interrompida, repita o mesmo comando "dev" ou "eval".
 Respostas concluídas são puladas. Ao retomar só é possível mudar o ritmo da
 API, por exemplo api.concurrency=8 ou api.target_rps=20, e recortes do plano:
 
-    pixi run experiment fakebr_multimodel --run piloto_novo --stage dev "select.temperatures=[0.0]"
-    pixi run report fakebr_multimodel --run piloto_novo --stage dev "select.models=[qwen38_27b]"
+    pixi run experiment --run piloto_novo --stage dev "select.temperatures=[0.0]"
+    pixi run report --run piloto_novo "select.models=[qwen38_27b]"
 
 Qualquer outra mudança (modelos, prompts, max_tokens...) exige um run NOVO. O
 programa recusa a mudança com uma mensagem. As requisições idênticas do run

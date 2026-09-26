@@ -143,6 +143,28 @@ class MultimodelTest(unittest.TestCase):
             self.assertEqual(float(baseline["accuracy"]), 1.0)
             self.assertNotEqual(baseline["macro_f1_ci95_low"], "")
 
+    def test_short_commands_use_run_and_latest_stage(self):
+        with workspace() as ws:
+            with self.assertRaisesRegex(ValueError, "Nenhum run usado"):
+                ws.cli("report")
+            out = self.prepare(ws)
+            # Run existente: o experimento vem do experiment.yaml.
+            ws.cli("experiment", "--run", "piloto", "--stage", "dev", ONLY_T0)
+            ws.cli("report", ONLY_T0)  # último run usado; só há dev
+            self.assertTrue((out / "report_dev" / "metrics.csv").is_file())
+            self.assertTrue((out / "report_dev" / "macro_f1.pdf").is_file())  # PDF é padrão
+            self.assertFalse((out / "report_eval").exists())
+            ws.cli("experiment", "--run", "piloto", "--stage", "eval", ONLY_T0)
+            ws.cli("report", ONLY_T0)  # agora a etapa mais avançada é eval
+            self.assertTrue((out / "report_eval" / "metrics.csv").is_file())
+            # Etapas pagas continuam exigindo --run; run novo exige o experimento.
+            with self.assertRaisesRegex(ValueError, "Informe --run"):
+                ws.cli("experiment", "--stage", "dev")
+            with self.assertRaisesRegex(ValueError, "informe o experimento"):
+                ws.cli("experiment", "--run", "novo", "--stage", "prepare")
+            with self.assertRaisesRegex(ValueError, "Experimento desconhecido"):
+                ws.cli("report", "inexistente", "--run", "piloto")
+
     def test_length_rule(self):
         from fakebr.metrics import apply_length_rule, fit_length_rule
 

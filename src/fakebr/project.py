@@ -30,6 +30,7 @@ from .io import atomic_json, atomic_text, now_utc, sha256
 
 FROZEN_FILE = "experiment.yaml"
 FROZEN_FORMAT = 1
+CURRENT_RUN_FILE = ".run_atual"  # em runs/: último run usado (padrão de "pixi run report")
 RESUME_OVERRIDES = tuple(f"api.{key}" for key in RUNTIME_KEYS) + ("select.", "paths.", "report.")
 PACKAGES = ("hydra-core", "omegaconf", "openai", "numpy", "scikit-learn", "matplotlib")
 
@@ -183,6 +184,31 @@ def provenance(root: Path) -> dict:
     }
 
 
+def paths_for(root: Path, overrides: list[str]) -> Paths:
+    """Caminhos do conf/ atual, considerando só overrides ``paths.*``."""
+    base = compose(root, None, [o for o in overrides if _override_key(o).startswith("paths.")])
+    return Paths.from_config(root, base["paths"])
+
+
+def current_run(paths: Paths) -> str | None:
+    """Último run usado por um comando, se ainda existir."""
+    marker = paths.runs / CURRENT_RUN_FILE
+    if not marker.is_file():
+        return None
+    name = marker.read_text(encoding="utf-8").strip()
+    return name if name and (paths.runs / name).is_dir() else None
+
+
+def set_current_run(paths: Paths, name: str) -> None:
+    atomic_text(paths.runs / CURRENT_RUN_FILE, name + "\n")
+
+
+def frozen_of(paths: Paths, root: Path, run_name: str) -> dict | None:
+    """Configuração congelada de um run existente; ``None`` se o run não existe."""
+    out = paths.run_dir(run_name)
+    return read_frozen(out, root) if out.is_dir() else None
+
+
 def read_frozen(out: Path, root: Path) -> dict | None:
     path = out / FROZEN_FILE
     if path.exists():
@@ -236,8 +262,7 @@ def open_run(experiment: str | None, run_name: str, overrides: list[str], *,
     ``experiment=None`` aceita qualquer run existente (cache-import, custos).
     """
     root = project_root()
-    base = compose(root, None, [o for o in overrides if _override_key(o).startswith("paths.")])
-    paths = Paths.from_config(root, base["paths"])
+    paths = paths_for(root, overrides)
     out = paths.run_dir(run_name)
     frozen = read_frozen(out, root) if out.is_dir() else None
     created = frozen is None

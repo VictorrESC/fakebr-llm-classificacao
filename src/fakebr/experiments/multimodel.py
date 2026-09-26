@@ -343,6 +343,12 @@ def cost_summary(out: Path) -> None:
 
 # --- Relatório ----------------------------------------------------------------
 
+def default_report_stage(run: Run) -> str:
+    """Etapa padrão do relatório: eval se já houver respostas dela, senão dev."""
+    stages = {row["stage"] for row in read_csv(run.out / RESULTS_FILE)}
+    return "eval" if "eval" in stages else DEFAULT_REPORT_STAGE
+
+
 def report(run: Run, stage: str) -> dict:
     """Métricas, tabelas e figuras da etapa; devolve a pasta e os arquivos gerados."""
     experiment, out = run.experiment, run.out

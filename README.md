@@ -39,18 +39,21 @@ gerar custos:
 
 ```powershell
 pixi run experiment viabilidade --run minha_viabilidade
-pixi run experiment fakebr_multimodel --run meu_piloto --stage prepare
-pixi run experiment fakebr_multimodel --run meu_piloto --stage dev
-pixi run experiment fakebr_multimodel --run meu_piloto --stage eval
-pixi run report fakebr_multimodel --run meu_piloto --stage eval
+pixi run experiment fakebr_multimodel --run meu_piloto --stage prepare   # cria o run
+pixi run experiment --run meu_piloto --stage dev                         # experimento vem do run
+pixi run experiment --run meu_piloto --stage eval
+pixi run report                    # último run usado, etapa mais avançada, PNG + PDF
 pixi run costs
 ```
+
+`pixi run report` também aceita `--run <nome>` e `--stage dev|eval`. Em
+`experiment`, `--run` e `--stage` são sempre obrigatórios (podem gerar custos).
 
 ## Relatórios e notebook
 
 `pixi run report` grava tabelas e figuras na pasta do run (`report_dev/`,
-`report_eval/` ou `report/`). Para PDF (vetorial, bom para a dissertação) ou
-SVG, acrescente `"report.formats=[png,pdf]"`. As figuras não têm data embutida:
+`report_eval/` ou `report/`), em PNG e PDF (vetorial, bom para a dissertação);
+para outros formatos, `"report.formats=[svg]"`. As figuras não têm data embutida:
 o mesmo run gera sempre os mesmos arquivos.
 
 O relatório multimodelo inclui `length_baseline.csv`: a regra "palavras > limiar",
